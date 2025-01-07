@@ -3,7 +3,7 @@ document.addEventListener("DOMContentLoaded", function () {
   const cookiesListElement = document.getElementById("cookiesList");
   const copyButtonElement = document.getElementById("copyButton");
 
-  console.log("Token element:", tokenElement); // Check if the element is found
+  console.log("Token element:", tokenElement);
   console.log("Cookies list element:", cookiesListElement);
   console.log("Copy button element:", copyButtonElement);
 
@@ -13,32 +13,63 @@ document.addEventListener("DOMContentLoaded", function () {
       tokenElement.textContent = result.csrfToken || "No token found";
     });
 
-    // Fetch Binance cookies from storage
-    chrome.storage.local.get(["binanceCookies"], function (result) {
-      const cookies = result.binanceCookies || [];
-      cookiesListElement.textContent = JSON.stringify(cookies, null, 2);
+    // Get the current tab's domain and fetch the corresponding cookies
+    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
+      if (tabs.length === 0) {
+        console.error("No active tab found.");
+        return;
+      }
+
+      const url = new URL(tabs[0].url);
+      const domain = url.hostname;
+      const storageKey = `cookies_${domain}`;
+      console.log("Looking for cookies with key:", storageKey);
+
+      chrome.storage.local.get([storageKey], function (result) {
+        const cookies = result[storageKey] || [];
+        console.log("Fetched cookies for domain:", domain, cookies);
+
+        if (cookies.length === 0) {
+          cookiesListElement.textContent = "No cookies found.";
+        } else {
+          cookiesListElement.textContent = JSON.stringify(cookies, null, 2);
+        }
+      });
     });
 
     // Copy both CSRF token and cookies to clipboard when the button is clicked
     copyButtonElement.addEventListener("click", function () {
       const token = tokenElement.textContent;
-      const cookies = JSON.parse(cookiesListElement.textContent);
-      console.log("Cookies:", cookies);
+      let cookies = [];
+
+      try {
+        cookies = JSON.parse(cookiesListElement.textContent);
+      } catch (error) {
+        console.error("Failed to parse cookies:", error);
+      }
+
+      console.log("Cookies after parsing:", cookies);
+
       const needed = cookies.filter((cookie) => cookie.name === "p20t");
+      console.log("Filtered cookies:", needed);
+
       let cookieString = "";
       if (needed.length === 0) {
-        console.error("Cookie not found");
+        console.error("Cookie 'p20t' not found.");
       } else {
-        cookieString = needed[0].name + "=" + needed[0].value;
+        cookieString = `${needed[0].name}=${needed[0].value}`;
+        console.log("Constructed cookie string:", cookieString);
       }
+
       // Construct the string to copy
       const textToCopy = `csrfToken=${token}&${cookieString}`;
+      console.log("Text to copy:", textToCopy);
 
       // Copy the text to the clipboard
       navigator.clipboard
         .writeText(textToCopy)
         .then(function () {
-          console.log("CSRF token and cookies copied to clipboard");
+          console.log("CSRF token and cookies copied to clipboard.");
         })
         .catch(function (error) {
           console.error("Failed to copy text: ", error);
